@@ -1,11 +1,12 @@
 // 上方遊戲畫面：草地、人物、魔法
 
-import { COLORS, MANA, WORLD, HERO, COMBAT, PALETTES, reduceMotion } from './config.js';
+import { COLORS, MANA, WORLD, HERO, COMBAT, PALETTES, ITEMS, SPELL_NAMES, reduceMotion } from './config.js';
 import { rand, hexA, seeded } from './utils.js';
 import { sceneCtx as ctx, size } from './canvas.js';
 import { game, parseSpell, spellCost, showOpponent } from './game.js';
 import { fx } from './effects.js';
 import { me, op, drawHero } from './hero.js';
+import { items } from './items.js';
 
 let grass = null; // 預先畫好的草地，尺寸改變時才重畫
 
@@ -29,6 +30,7 @@ export function drawScene() {
 
   drawArena();
   drawRipples();
+  drawItems();
 
   const heroes = [{ h: me, pal: PALETTES.me, set: HERO.sprites }];
   if (showOpponent()) heroes.push({ h: op, pal: PALETTES.op, set: HERO.opponentSprites || HERO.sprites });
@@ -42,6 +44,80 @@ export function drawScene() {
 
   ctx.restore();
   drawManaBar(w); // 介面不跟著畫面震動
+  drawStored();
+}
+
+// 場地道具：地上的影子 + 上下飄動的發光球，回血是十字、回魔是菱形
+function drawItems() {
+  for (const it of items) {
+    const def = ITEMS.kinds[it.kind];
+    if (!def) continue;
+    // 快消失時閃爍
+    if (it.life < 3000 && Math.floor(it.t / 120) % 2) continue;
+    const bob = reduceMotion ? 0 : Math.sin(it.t / 300) * 4;
+    const pop = Math.min(1, it.t / 250); // 出現時由小變大
+    const r = 13 * pop;
+    const x = it.x, y = it.y - 22 + bob;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(20, 40, 15, 0.3)';
+    ctx.beginPath(); ctx.ellipse(x, it.y, 14 * pop, 4.5 * pop, 0, 0, Math.PI * 2); ctx.fill();
+
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2);
+    g.addColorStop(0, hexA(def.color, 0.55));
+    g.addColorStop(1, hexA(def.color, 0));
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r * 2, 0, Math.PI * 2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.strokeStyle = def.color;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = def.color;
+    const k = r * 0.55;
+    ctx.beginPath();
+    if (it.kind === 'heal') {
+      const t = k * 0.36;
+      ctx.rect(x - t, y - k, t * 2, k * 2);
+      ctx.rect(x - k, y - t, k * 2, t * 2);
+    } else {
+      ctx.moveTo(x, y - k); ctx.lineTo(x + k * 0.7, y); ctx.lineTo(x, y + k); ctx.lineTo(x - k * 0.7, y);
+      ctx.closePath();
+    }
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// 魔力條下方：顯示 R 鍵儲存的魔法
+function drawStored() {
+  const s = game.stored;
+  if (!s) return;
+  const color = COLORS[s.type] ?? COLORS.chalk;
+  const label = `R  ${SPELL_NAMES[s.type] ?? s.type}`;
+  const x = 37, y = 40, h = 22;
+
+  ctx.save();
+  ctx.font = '600 13px system-ui, sans-serif';
+  const w = ctx.measureText(label).width + 30;
+  roundRect(x, y, w, h, h / 2);
+  ctx.fillStyle = 'rgba(15, 20, 40, 0.6)';
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = hexA(color, reduceMotion ? 0.8 : 0.55 + 0.3 * Math.sin(game.t / 200));
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.beginPath(); ctx.arc(x + 12, y + h / 2, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#efe6c8';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + 22, y + h / 2 + 0.5);
+  ctx.restore();
 }
 
 // 場地邊界

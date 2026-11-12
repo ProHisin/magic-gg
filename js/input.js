@@ -2,6 +2,7 @@
 //   方向鍵        移動人物
 //   q w e a d z s c  畫線（按住 Shift 為半長筆畫）
 //   空白鍵        施法
+//   R             儲存畫好的魔法；已儲存時再按一次發動
 //   Backspace     復原上一筆
 //   Esc           清除
 
@@ -28,6 +29,9 @@ export function bindInput() {
     if (dir) {
       e.preventDefault();
       if (!e.repeat) handleKey(dir, e.shiftKey);
+    } else if (e.code === 'KeyR') {
+      e.preventDefault();
+      if (!e.repeat) handleKey('store');
     } else if (e.code === 'Space') {
       e.preventDefault(); // 避免頁面捲動
       if (!e.repeat) handleKey(' ');
@@ -35,7 +39,7 @@ export function bindInput() {
       e.preventDefault();
       if (!e.repeat) handleKey(e.key);
     }
-    syncHalfButton();
+    syncButtons();
   });
 
   window.addEventListener('keyup', e => {
@@ -53,8 +57,10 @@ export function bindInput() {
 }
 
 const halfBtn = document.querySelector('.stroke-pad .half');
-function syncHalfButton() {
+const storeBtn = document.querySelector('.stroke-pad .store');
+function syncButtons() {
   if (halfBtn) halfBtn.classList.toggle('on', game.halfNext);
+  if (storeBtn) storeBtn.classList.toggle('on', !!game.stored);
 }
 
 function bindTouchPads() {
@@ -62,7 +68,7 @@ function bindTouchPads() {
     btn.addEventListener('pointerdown', e => {
       e.preventDefault();
       handleKey(btn.dataset.k);
-      syncHalfButton();
+      syncButtons();
     });
   });
 

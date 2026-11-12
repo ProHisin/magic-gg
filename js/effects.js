@@ -69,6 +69,12 @@ export function castSpell(type, params, origin, dir, owner, id) {
   }
 }
 
+// 撿到道具：白光加上道具顏色的粒子
+export function pickupFx(x, y, color) {
+  burst(x, y - 10, ['#ffffff', color, color], 26, 3.5, 1);
+  fx.ripples.push({ x, y, r: 4, life: 0.7, delay: 0 });
+}
+
 // 施法失敗：灰煙 + 震動（shake 為 false 時只有灰煙，用於對手失敗）
 export function spawnSmoke(x, y, shake = true) {
   if (shake && !reduceMotion) fx.shake = 10;

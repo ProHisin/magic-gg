@@ -78,6 +78,30 @@ export const SPELL_COST = {
   dash: 15,
 };
 
+// 魔法名稱（介面上顯示已儲存的魔法用）
+export const SPELL_NAMES = {
+  fire: '火球',
+  water: '水彈',
+  shield: '護盾',
+  dash: '衝刺',
+};
+
+// 場地道具
+// 對戰時由房主（建立房間的一方）負責產生道具、判定誰撿到，單人練習時由自己負責
+export const ITEMS = {
+  firstMs: 6000,               // 開局後第一個道具出現的時間
+  intervalMs: [7000, 12000],   // 之後每隔多久出現一個（在這個範圍內隨機）
+  max: 2,                      // 場上最多同時存在幾個
+  lifeMs: 15000,               // 沒人撿多久後消失（最後 3 秒會閃爍）
+  pickupRadius: 34,            // 撿取距離（以人物腳底為準）
+  margin: 70,                  // 離場地邊緣的最小距離
+  kinds: {
+    // weight 是出現機率的權重；hp / mana 是撿到時回復的量
+    heal: { weight: 1, hp: 25, color: '#6fe09a' },
+    mana: { weight: 1, mana: 40, color: '#7aa8ff' },
+  },
+};
+
 // 遊戲世界大小（固定座標系，雙方螢幕大小不同也會一致）
 export const WORLD = { w: 1000, h: 560 };
 

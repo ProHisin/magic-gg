@@ -1,22 +1,25 @@
 // 遊戲狀態、施法規則與對戰同步
 //
 // 咒語格式：主魔法 [½ 參數] [½ 參數] ...
+//   空白鍵立即施放；R 鍵把畫好的咒語先儲存起來（當下就扣魔力），之後再按 R 朝當時的面朝方向發動
 //   一般筆畫組成「字」，Shift 筆畫（長度減半，方向任意）是字與字之間的連接符。
 //   第一個字必須是主魔法，後面的字必須是附加參數。
 //
 // 對戰同步採「各自負責自己」的方式：
 //   - 自己的人物位置、施法由自己決定，傳給對手
 //   - 對手的魔法是否打中自己，由自己判定，再把結果（命中或被擋）傳回去
+//   - 場地道具由房主（left）產生並判定誰撿到
 
 import {
   DIRS, PARAMS, DEFAULT_PARAMS, MAX_TURNS, PARAM_COST, COLORS, FAIL_MS, HALF_LEN,
-  MANA, SPELL_COST, COMBAT, NET, WORLD, SPELL_BASE,
+  MANA, SPELL_COST, COMBAT, NET, WORLD, SPELL_BASE, ITEMS,
 } from './config.js';
 import { segKey } from './utils.js';
 import { matchSpell, matchParam } from './shapes.js';
 import {
-  fx, castSpell, spawnSmoke, updateEffects, resolveProjectile, clearEffects, shieldBlocks,
+  fx, castSpell, spawnSmoke, updateEffects, resolveProjectile, clearEffects, shieldBlocks, pickupFx,
 } from './effects.js';
+import { resetItems, addItem, removeItem, touching, updateItems } from './items.js';
 import {
   me, op, held, placeHero, updateLocalHero, updateRemoteHero, castOrigin, heroCenter, dirOf, startDash,
 } from './hero.js';
@@ -36,6 +39,7 @@ export const game = {
   shiftHeld: false,  // 鍵盤 Shift 是否按住（用來改變筆尖顏色）
   mana: MANA.start,
   manaFlash: 0,      // 魔力不足時魔力條閃紅 1→0
+  stored: null,      // R 鍵儲存的魔法 { type, params, extraCost }
   t: 0,
 };
 
@@ -47,6 +51,8 @@ let listener = () => {};
 export const setMatchListener = fn => { listener = fn; };
 export const isActive = () => match.state === 'solo' || match.state === 'playing';
 export const showOpponent = () => match.state === 'playing' || match.state === 'over';
+const isHost = () => match.state === 'solo' || match.side === 'left'; // 負責道具的一方
+const otherSide = () => (match.side === 'left' ? 'right' : 'left');
 
 let castCount = 0;
 let sendTimer = 0;
@@ -63,6 +69,8 @@ export function startMatch(mode, side = match.side) {
   game.ghost = null;
   game.mana = MANA.start;
   game.manaFlash = 0;
+  game.stored = null;
+  resetItems();
   held.clear();
   placeHero(me, side);
   placeHero(op, side === 'left' ? 'right' : 'left');
@@ -72,6 +80,8 @@ export function startMatch(mode, side = match.side) {
 
 export function toLobby() {
   clearEffects();
+  resetItems();
+  game.stored = null;
   held.clear();
   setState('lobby', { result: null });
 }
@@ -154,28 +164,52 @@ export function spellCost(spell) {
   return (SPELL_COST[spell.type] ?? 0) + (spell.extraCost ?? 0);
 }
 
-function cast() {
-  if (!game.strokes.length) return;
+// 取出畫線區的咒語：檢查形狀與魔力，成功就扣魔力、清空畫線區並回傳咒語，失敗回傳 null
+function takeDrawnSpell() {
+  if (!game.strokes.length) return null;
   const spell = parseSpell(game.strokes);
-  if (!spell) { fail(); return; }
+  if (!spell) { fail(); return null; }
 
   const cost = spellCost(spell);
   if (game.mana < cost) {
     game.manaFlash = 1;
     fail();
-    return;
+    return null;
   }
   game.mana -= cost;
 
+  game.ghost = { pts: game.points.slice(), halves: game.halves.slice(), color: COLORS[spell.type], a: 1 };
+  resetDrawing();
+  return spell;
+}
+
+// 空白鍵：立即施放
+function cast() {
+  const spell = takeDrawnSpell();
+  if (spell) release(spell);
+}
+
+// R 鍵：沒有儲存的魔法時把畫好的咒語存起來；已經有儲存的魔法時發動它（不影響畫到一半的線）
+function store() {
+  if (game.stored) {
+    const spell = game.stored;
+    game.stored = null;
+    release(spell);
+    return;
+  }
+  if (game.mode !== 'draw') return;
+  const spell = takeDrawnSpell();
+  if (spell) game.stored = spell;
+}
+
+// 朝目前面朝方向放出魔法（魔力已經扣過）
+function release(spell) {
   const o = castOrigin(me);
   const dir = { x: me.fx, y: me.fy };
   const id = `${match.side}-${++castCount}`;
   if (spell.type === 'dash') startDash(me, SPELL_BASE.dashDist * spell.params.length, SPELL_BASE.dashMs);
   castSpell(spell.type, spell.params, o, dir, 'me', id);
   send({ t: 'cast', id, type: spell.type, params: spell.params, x: o.x, y: o.y, dx: dir.x, dy: dir.y });
-
-  game.ghost = { pts: game.points.slice(), halves: game.halves.slice(), color: COLORS[spell.type], a: 1 };
-  resetDrawing();
 }
 
 function fail() {
@@ -187,7 +221,9 @@ function fail() {
 }
 
 export function handleKey(k, half = false) {
-  if (!isActive() || game.mode !== 'draw') return;
+  if (!isActive()) return;
+  if (k === 'store') { store(); return; } // 失敗冷卻中也能發動已儲存的魔法
+  if (game.mode !== 'draw') return;
   if (DIRS[k]) {
     const h = half || game.halfNext;
     game.halfNext = false;
@@ -221,6 +257,40 @@ function checkIncoming() {
       send({ t: 'hit', id: p.id, type: p.type, x: p.x, y: p.y, blocked: false, hp: me.hp });
       if (me.hp <= 0) endMatch('lose');
     }
+  }
+}
+
+// ---------------- 場地道具 ----------------
+function applyItem(kind) {
+  const def = ITEMS.kinds[kind];
+  if (!def) return;
+  if (def.hp) me.hp = Math.min(COMBAT.maxHp, me.hp + def.hp);
+  if (def.mana) game.mana = Math.min(MANA.max, game.mana + def.mana);
+}
+
+// 道具被撿走或消失；by 是撿到的一方（'left' / 'right'），null 代表過期消失
+function takeItem(id, by) {
+  const it = removeItem(id);
+  if (!it) return;
+  if (by) pickupFx(it.x, it.y, ITEMS.kinds[it.kind]?.color ?? '#ffffff');
+  if (by === match.side) applyItem(it.kind);
+  if (isHost() && match.state === 'playing') send({ t: 'took', id, by });
+}
+
+function updateItemsStep(dt) {
+  const online = match.state === 'playing';
+  const { spawned, expired } = updateItems(dt, isHost());
+  if (online) {
+    for (const it of spawned) send({ t: 'item', id: it.id, kind: it.kind, x: it.x, y: it.y });
+    for (const it of expired) send({ t: 'took', id: it.id, by: null });
+  }
+  if (!isHost()) return;
+
+  const mine = touching(me);
+  if (mine) takeItem(mine.id, match.side);
+  if (online) {
+    const theirs = touching(op);
+    if (theirs) takeItem(theirs.id, otherSide());
   }
 }
 
@@ -268,6 +338,19 @@ function onNetMessage(msg) {
         op.hurt = 1;
         if (op.hp <= 0) endMatch('win');
       }
+      break;
+    }
+    case 'item': {
+      if (match.state !== 'playing' || isHost() || !ITEMS.kinds[msg.kind]) return;
+      const x = num(msg.x, 0, WORLD.w), y = num(msg.y, 0, WORLD.h);
+      if (x === null || y === null) return;
+      addItem({ id: String(msg.id), kind: msg.kind, x, y });
+      break;
+    }
+    case 'took': {
+      if (match.state !== 'playing' || isHost()) return;
+      const by = msg.by === 'left' || msg.by === 'right' ? msg.by : null;
+      takeItem(String(msg.id), by);
       break;
     }
     case 'rematch':
@@ -325,6 +408,7 @@ export function update(dt) {
 
   updateLocalHero(me, dt, isActive());
   if (showOpponent()) updateRemoteHero(op, dt);
+  if (isActive()) updateItemsStep(dt);
   updateEffects(dt, f, { me: heroCenter(me), op: heroCenter(op) });
 
   if (match.state === 'playing') {
