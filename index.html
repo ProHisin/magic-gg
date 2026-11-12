@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>畫線施法</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="stage">
+  <div class="scene-wrap">
+    <canvas id="scene" aria-label="草地場景"></canvas>
+    <!-- 觸控裝置的移動鍵 -->
+    <div class="pad move-pad" role="group" aria-label="移動">
+      <span></span><button data-move="ArrowUp" aria-label="往上走">▲</button><span></span>
+      <button data-move="ArrowLeft" aria-label="往左走">◀</button><span></span><button data-move="ArrowRight" aria-label="往右走">▶</button>
+      <span></span><button data-move="ArrowDown" aria-label="往下走">▼</button><span></span>
+    </div>
+  </div>
+  <button id="btn-exit" class="exit" aria-label="離開對局" hidden>✕</button>
+  <div class="band" aria-hidden="true"></div>
+  <div class="slate-wrap">
+    <canvas id="slate" aria-label="畫線區"></canvas>
+    <!-- 觸控裝置的畫線鍵 -->
+    <div class="pad stroke-pad" role="group" aria-label="畫線">
+      <button data-k="q" aria-label="左上">↖</button>
+      <button data-k="w" aria-label="上">↑</button>
+      <button data-k="e" aria-label="右上">↗</button>
+      <button data-k="a" aria-label="左">←</button>
+      <button data-k=" " class="cast" aria-label="施法">✦</button>
+      <button data-k="d" aria-label="右">→</button>
+      <button data-k="z" aria-label="左下">↙</button>
+      <button data-k="s" aria-label="下">↓</button>
+      <button data-k="c" aria-label="右下">↘</button>
+      <button data-k="half" class="half" aria-label="下一筆長度減半">½</button>
+      <button data-k="Backspace" aria-label="復原">⌫</button>
+      <span></span>
+    </div>
+  </div>
+  <!-- 大廳 / 等待 / 結算 -->
+  <div class="overlay" id="lobby">
+    <div class="card">
+      <section data-view="menu">
+        <h1>畫線施法</h1>
+        <button id="btn-host" class="primary">建立房間</button>
+        <div class="join">
+          <input id="join-code" autocomplete="off" spellcheck="false" placeholder="房間代碼" aria-label="房間代碼">
+          <button id="btn-join">加入</button>
+        </div>
+        <button id="btn-solo" class="ghost">單人練習</button>
+        <p class="status" id="status" role="status"></p>
+      </section>
+      <section data-view="waiting" hidden>
+        <p class="hint">把房間代碼告訴對手</p>
+        <div class="code" id="room-code"></div>
+        <button id="btn-copy">複製代碼</button>
+        <p class="status" id="copy-state" role="status"></p>
+        <p class="hint small">等待對手加入…</p>
+        <button id="btn-cancel" class="ghost">取消</button>
+      </section>
+      <section data-view="result" hidden>
+        <div class="result" id="result-text"></div>
+        <button id="btn-rematch" class="primary">再來一局</button>
+        <button id="btn-leave" class="ghost">離開</button>
+      </section>
+    </div>
+  </div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
